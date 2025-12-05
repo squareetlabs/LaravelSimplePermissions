@@ -1,0 +1,160 @@
+<?php
+
+namespace Squareetlabs\LaravelSimplePermissions\Middleware;
+
+use Illuminate\Database\Eloquent\Model;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Config;
+use InvalidArgumentException;
+use Exception;
+
+class SimplePermissionsMiddleware
+{
+    /**
+     * Check if the request has authorization to continue.
+     *
+     * @param Request $request
+     * @param string $method
+     * @param string|array $params
+     * @param array|null $models
+     * @param bool $require
+     * @return bool
+     * @throws Exception
+     */
+    protected function authorization(Request $request, string $method, string|array $params, ?array $models, bool $require = false): bool
+    {
+        // Mapping of method names
+        $methodTypes = [
+            'roles' => 'hasRole',
+            'permission' => 'hasPermission',
+            'ability' => 'hasAbility',
+        ];
+
+        // Determine the action for checking the role or permissions
+        $action = $methodTypes[$method] ?? null;
+
+        // Ensure method is valid
+        if ($action === null) {
+            throw new InvalidArgumentException('Invalid method');
+        }
+
+        // Convert params to array if it's not already
+        $params = is_array($params) ? $params : explode('|', $params);
+
+        // Check the ability
+        if ($action === 'hasAbility') {
+            return $this->checkAbility($request, reset($params), $models);
+        }
+
+        return !Auth::guest() && Auth::user()?->$action($params, $require);
+    }
+
+    /**
+     * Check user's ability.
+     *
+     * @param Request $request
+     * @param string $ability
+     * @param array|null $models
+     * @return bool
+     */
+    protected function checkAbility(Request $request, string $ability, ?array $models): bool
+    {
+        // Get the models for ability check
+        $gateArguments = $this->getGateArguments($request, $models);
+
+        // Ensure we have both entity class and id
+        if (count($gateArguments) < 2) {
+            return false;
+        }
+
+        [$entityClass, $entityId] = $gateArguments;
+
+        // Ensure entity id is provided
+        if ($entityId === null || !is_numeric($entityId)) {
+            return false;
+        }
+
+        // Ensure entity class is valid
+        if (!class_exists($entityClass)) {
+            abort(500, "Invalid entity class: {$entityClass}");
+        }
+
+        // Fetch the entity model or abort if not found
+        $entity = $entityClass::find($entityId);
+
+        if (!$entity) {
+            abort(404, "Entity not found: {$entityClass} with ID {$entityId}");
+        }
+
+        // Check the ability for the entity for the current user
+        return $request->user()->hasAbility($ability, $entity);
+    }
+
+
+    /**
+     * The request is unauthorized, so it handles the aborting/redirecting.
+     *
+     * @return RedirectResponse
+     */
+    protected function unauthorized(): RedirectResponse
+    {
+        // Method to be called in the middleware return
+        $handling = Config::get('simple-permissions.middleware.handling');
+        $handler = Config::get('simple-permissions.middleware.handlers.' . $handling);
+
+        if ($handling === 'abort') {
+            abort($handler['code'], $handler['message']);
+        }
+
+        // Prepare redirect response
+        $redirect = redirect()->to($handler['url']);
+
+        // If flash message key is provided, use it for session message
+        if (!empty($handler['message']['key']) && !empty($handler['message']['content'])) {
+            $redirect->with($handler['message']['key'], $handler['message']['content']);
+        }
+
+        return $redirect;
+    }
+
+    /**
+     * Get the arguments parameters for the gate.
+     *
+     * @param Request $request
+     * @param array|null $models
+     * @return array
+     */
+    protected function getGateArguments(Request $request, ?array $models): array
+    {
+        // Gate model not defined, return empty array
+        if ($models === null) {
+            return [];
+        }
+
+        // Filter out invalid model instances and fetch actual model instances
+        return array_map(fn($model) => $model instanceof Model ? $model : $this->getModel($request, $model), $models);
+    }
+
+    /**
+     * Get the model to authorize.
+     *
+     * @param Request $request
+     * @param string $model
+     * @return string
+     */
+    protected function getModel(Request $request, string $model): string
+    {
+        // Trim the model name and ensure it is a fully qualified class name if not already
+        $trimmedModel = trim($model);
+
+        // Return the model directly if it is a fully qualified class name
+        if (class_exists($trimmedModel)) {
+            return $trimmedModel;
+        }
+
+        // Otherwise, retrieve the model from the request route, falling back to the original model name
+        return $request->route($trimmedModel) ?: $trimmedModel;
+    }
+}

@@ -1,0 +1,46 @@
+# IDE
+.idea
+.vscode
+.phpstorm.meta.php
+_ide_helper.php
+_ide_helper_models.php
+*.swp
+*.swo
+*~
+
+# Dependencies
+/vendor
+/node_modules
+
+# Composer
+composer.lock
+
+# Testing
+/phpunit.xml
+.phpunit.result.cache
+/.phpunit.cache
+coverage/
+.phpunit.cache
+
+# Environment
+.env
+.env.backup
+.env.production
+.phpunit.result.cache
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build
+/build
+/dist
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+.cache

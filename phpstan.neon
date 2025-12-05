@@ -1,0 +1,34 @@
+includes:
+    - vendor/larastan/larastan/extension.neon
+    - vendor/larastan/larastan/rules.neon
+
+parameters:
+    level: 6
+
+    paths:
+        - src
+        - tests
+
+    checkModelProperties: true
+    checkMissingIterableValueType: false
+    checkGenericClassInNonGenericObjectType: false
+    checkOctaneCompatibility: false
+    checkTooWideReturnTypes: false
+
+    ignoreErrors:
+        # Laravel helpers no siempre tienen tipado completo en todas las versiones
+        - '#Call to unknown method Illuminate\\[^ ]+::#'
+        - '#Static call to instance method Illuminate\\[^ ]+::#'
+        - '#Access to undefined property Illuminate\\[^ ]+::#'
+
+        # Testbench crea modelos y factories mágicos
+        - '#Property .+ does not accept Illuminate\\Database\\Eloquent\\Factory#'
+
+        # Falsos positivos por el Container / IoC
+        - '#Method .*::make\(.*\) invoked with.*#'
+
+        # Laravel collections (por cambios internos entre versiones)
+        - '#Parameter \#1 \$callback of method Illuminate\\Support\\Collection::#'
+
+    # Asegura memoria suficiente
+    memoryLimit: "2G"

@@ -4,7 +4,7 @@
 [![PHP Version Require](https://poser.pugx.org/squareetlabs/laravel-simple-permissions/require/php)](https://packagist.org/packages/squareetlabs/laravel-simple-permissions)
 [![License](https://poser.pugx.org/squareetlabs/laravel-simple-permissions/license)](https://packagist.org/packages/squareetlabs/laravel-simple-permissions)
 
-A comprehensive and flexible Laravel package for advanced permission management. This package provides a robust system for managing roles, permissions, groups, and entity-specific abilities without the complexity of team-based structures.
+A comprehensive and flexible Laravel package for advanced permission management. This package provides a robust system for managing roles, permissions, groups, and entity-specific abilities.
 
 **Core Functionality:**
 

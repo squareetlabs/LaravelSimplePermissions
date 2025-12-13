@@ -46,7 +46,15 @@ class AuditService
         ?array $oldValues = null,
         ?array $newValues = null
     ): void {
-        if (!Config::get('simple-permissions.audit.enabled', true)) {
+        if (!Config::get('simple-permissions.audit.enabled', false)) {
+            return;
+        }
+
+        // Check if audit table exists before attempting to log
+        // This prevents errors during migrations or if table hasn't been created yet
+        if (!Schema::hasTable('audit_logs')) {
+            // Silently skip logging if table doesn't exist (e.g., during migrations)
+            // The table will be created when migrations run
             return;
         }
 

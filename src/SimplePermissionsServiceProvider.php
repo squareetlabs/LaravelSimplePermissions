@@ -5,9 +5,7 @@ namespace Squareetlabs\LaravelSimplePermissions;
 use Exception;
 use Illuminate\Support\Facades\Blade;
 use Illuminate\Support\Facades\Config;
-use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\ServiceProvider;
-use Squareetlabs\LaravelSimplePermissions\Exceptions\AuditTableMissingException;
 use Squareetlabs\LaravelSimplePermissions\Support\Services\SimplePermissionsService;
 use Squareetlabs\LaravelSimplePermissions\Middleware\Ability as AbilityMiddleware;
 use Squareetlabs\LaravelSimplePermissions\Middleware\Permission as PermissionMiddleware;
@@ -61,6 +59,7 @@ class SimplePermissionsServiceProvider extends ServiceProvider
             __DIR__ . '/../database/migrations/create_groups_table.php' => database_path('migrations/2019_12_14_000008_create_groups_table.php'),
             __DIR__ . '/../database/migrations/create_group_user_table.php' => database_path('migrations/2019_12_14_000009_create_group_user_table.php'),
             __DIR__ . '/../database/migrations/create_entity_permission_table.php' => database_path('migrations/2019_12_14_000010_create_entity_permission_table.php'),
+            __DIR__ . '/../database/migrations/create_audit_logs_table.php' => database_path('migrations/2019_12_14_000011_create_audit_logs_table.php'),
         ];
 
         $migrations[__DIR__ . '/../database/migrations/add_performance_indexes.php'] = database_path('migrations/2019_12_14_000014_add_performance_indexes.php');
@@ -156,38 +155,16 @@ class SimplePermissionsServiceProvider extends ServiceProvider
     /**
      * Validate audit configuration.
      *
+     * Note: We don't validate the table existence here to avoid blocking migrations.
+     * The AuditService will check if the table exists before attempting to log,
+     * and will silently skip logging if the table doesn't exist (e.g., during migrations).
+     *
      * @return void
-     * @throws AuditTableMissingException
      */
     protected function validateAuditConfiguration(): void
     {
-        if (!Config::get('simple-permissions.audit.enabled')) {
-            return;
-        }
-
-        // No validar durante migraciones o instalación
-        // La validación real se hace en AuditService cuando se intenta usar
-        if ($this->app->runningInConsole()) {
-            $command = $this->app->runningUnitTests() ? null : ($_SERVER['argv'][1] ?? null);
-
-            // Saltar validación durante migraciones
-            if (in_array($command, ['migrate', 'migrate:fresh', 'migrate:refresh', 'migrate:reset', 'migrate:rollback', 'migrate:status'])) {
-                return;
-            }
-        }
-
-        // Validar que la tabla existe si la auditoría está habilitada
-        try {
-            if (!Schema::hasTable('audit_logs')) {
-                throw new AuditTableMissingException();
-            }
-        } catch (\Exception $e) {
-            // Si hay un error de conexión a la BD, no validar aún
-            // (puede ser que la BD aún no esté configurada)
-            if (str_contains($e->getMessage(), 'Connection') || str_contains($e->getMessage(), 'SQLSTATE')) {
-                return;
-            }
-            throw $e;
-        }
+        // Validation is done at runtime in AuditService when attempting to log
+        // This prevents blocking migrations or installation when audit is enabled
+        // but the table hasn't been created yet
     }
 }

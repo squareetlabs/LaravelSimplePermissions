@@ -90,10 +90,10 @@ class SimplePermissionsServiceProvider extends ServiceProvider
             Console\PermissionsListCommand::class,
             Console\PermissionsShowCommand::class,
             Console\PermissionsCommand::class,
-            Console\SyncPermissionsCommand::class,
-            Console\ClearCacheCommand::class,
-            Console\ExportPermissionsCommand::class,
-            Console\ImportPermissionsCommand::class,
+            Console\PermissionsSyncCommand::class,
+            Console\PermissionsClearCacheCommand::class,
+            Console\PermissionsExportCommand::class,
+            Console\PermissionsImportCommand::class,
         ]);
     }
 

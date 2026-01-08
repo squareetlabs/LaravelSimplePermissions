@@ -3,10 +3,9 @@
 namespace Squareetlabs\LaravelSimplePermissions\Console;
 
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\File;
-use Illuminate\Support\Facades\Schema;
 use Squareetlabs\LaravelSimplePermissions\Support\Facades\SimplePermissions;
+use Squareetlabs\LaravelSimplePermissions\Support\Helpers\FeatureChecker;
 use Exception;
 
 class PermissionsImportCommand extends Command
@@ -65,10 +64,7 @@ class PermissionsImportCommand extends Command
         $permissionModel = SimplePermissions::model('permission');
         $roleModel = SimplePermissions::model('role');
         
-        $groupsEnabled = Config::get('simple-permissions.features.groups.enabled', true)
-            && Schema::hasTable('groups')
-            && Schema::hasTable('group_user');
-        
+        $groupsEnabled = FeatureChecker::isGroupsEnabled();
         $groupModel = $groupsEnabled ? SimplePermissions::model('group') : null;
 
         // Import permissions
@@ -113,24 +109,20 @@ class PermissionsImportCommand extends Command
                     continue;
                 }
 
-                try {
-                    $group = $groupModel::updateOrCreate(
-                        ['code' => $groupData['code']],
-                        [
-                            'name' => $groupData['name'] ?? null
-                        ]
-                    );
+                $group = $groupModel::updateOrCreate(
+                    ['code' => $groupData['code']],
+                    [
+                        'name' => $groupData['name'] ?? null
+                    ]
+                );
 
-                    // Sync permissions
-                    if (isset($groupData['permissions'])) {
-                        $permissions = $permissionModel::whereIn('code', $groupData['permissions'])->get();
-                        $group->permissions()->sync($permissions);
-                    }
-
-                    $this->line("Processed group: {$groupData['code']}");
-                } catch (\Exception $e) {
-                    $this->warn("Failed to import group {$groupData['code']}: {$e->getMessage()}");
+                // Sync permissions
+                if (isset($groupData['permissions'])) {
+                    $permissions = $permissionModel::whereIn('code', $groupData['permissions'])->get();
+                    $group->permissions()->sync($permissions);
                 }
+
+                $this->line("Processed group: {$groupData['code']}");
             }
         } elseif (isset($data['groups']) && is_array($data['groups']) && !$groupsEnabled) {
             $this->warn("Groups feature is disabled. Skipping groups import.");

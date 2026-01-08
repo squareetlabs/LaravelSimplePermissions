@@ -3,9 +3,8 @@
 namespace Squareetlabs\LaravelSimplePermissions\Console;
 
 use Illuminate\Console\Command;
-use Illuminate\Support\Facades\Config;
-use Illuminate\Support\Facades\Schema;
 use Squareetlabs\LaravelSimplePermissions\Support\Facades\SimplePermissions;
+use Squareetlabs\LaravelSimplePermissions\Support\Helpers\FeatureChecker;
 use Exception;
 
 class PermissionsExportCommand extends Command
@@ -36,9 +35,7 @@ class PermissionsExportCommand extends Command
         $permissionModel = SimplePermissions::model('permission');
         $roleModel = SimplePermissions::model('role');
         
-        $groupsEnabled = Config::get('simple-permissions.features.groups.enabled', true)
-            && Schema::hasTable('groups')
-            && Schema::hasTable('group_user');
+        $groupsEnabled = FeatureChecker::isGroupsEnabled();
 
         $permissions = $permissionModel::all();
 

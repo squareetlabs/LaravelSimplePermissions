@@ -7,6 +7,7 @@ use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\Schema;
 use Squareetlabs\LaravelSimplePermissions\Support\Facades\SimplePermissions as SimplePermissionsFacade;
+use Squareetlabs\LaravelSimplePermissions\Support\Helpers\FeatureChecker;
 use Squareetlabs\LaravelSimplePermissions\Support\Services\PermissionCache;
 use Squareetlabs\LaravelSimplePermissions\Events\RoleAssigned;
 use Squareetlabs\LaravelSimplePermissions\Events\RoleRemoved;
@@ -52,9 +53,7 @@ trait HasPermissions
      */
     protected function isGroupsEnabled(): bool
     {
-        return Config::get('simple-permissions.features.groups.enabled', true)
-            && Schema::hasTable('groups')
-            && Schema::hasTable('group_user');
+        return FeatureChecker::isGroupsEnabled();
     }
 
     /**
@@ -64,9 +63,7 @@ trait HasPermissions
      */
     protected function isAbilitiesEnabled(): bool
     {
-        return Config::get('simple-permissions.features.abilities.enabled', true)
-            && Schema::hasTable('abilities')
-            && Schema::hasTable('entity_ability');
+        return FeatureChecker::isAbilitiesEnabled();
     }
 
     /**

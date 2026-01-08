@@ -59,6 +59,7 @@ class TestCase extends Orchestra
             'create_permissions_table.php',
             'create_roles_table.php',
             'create_role_user_table.php',
+            'create_permission_user_table.php',
             'create_abilities_table.php',
             'create_entity_ability_table.php',
             'create_groups_table.php',

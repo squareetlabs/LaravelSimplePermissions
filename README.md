@@ -25,6 +25,7 @@ A comprehensive and flexible Laravel package for advanced permission management.
 ## Key Features
 
 - ✅ **Roles & Permissions**: Flexible role system with granular permissions
+- ✅ **Direct Permissions**: Assign or revoke permissions directly to users, overriding role permissions
 - ✅ **Groups** (Optional): Organize users into groups with shared permissions
 - ✅ **Abilities**: (Optional) Entity-specific permissions for individual models
 - ✅ **Smart Caching**: Caching system to optimize permission checks
@@ -33,7 +34,7 @@ A comprehensive and flexible Laravel package for advanced permission management.
 - ✅ **Policies**: Integration with Laravel's Policy system
 - ✅ **Middleware**: Middleware for route protection
 - ✅ **Artisan Commands**: CLI tools for management
-- ✅ **Events**: Event system for permission changes (RoleAssigned, RoleRemoved, AbilityGranted, AbilityRevoked)
+- ✅ **Events**: Event system for permission changes (RoleAssigned, RoleRemoved, AbilityGranted, AbilityRevoked, PermissionGranted, PermissionRevoked)
 - ✅ **Validation**: Automatic validation of permission codes
 - ✅ **Performance**: Optimized queries with eager loading
 
@@ -121,12 +122,14 @@ Or in `config/simple-permissions.php`:
 > [!NOTE]
 > **Important**: Configure these settings **before** publishing migrations. If you disable a feature after migrations have been published, you'll need to manually remove the related migration files or tables.
 
-**Optional Migrations:**
-- **Groups** (`create_groups_table.php`, `create_group_user_table.php`): Only published if `features.groups.enabled` is `true`
-- **Abilities** (`create_abilities_table.php`, `create_entity_ability_table.php`): Only published if `features.abilities.enabled` is `true`
-- **Audit Logging** (`create_audit_logs_table.php`): Always published (table creation is handled by AuditService)
+**Migrations:**
+- **Essential**: `create_permissions_table.php`, `create_roles_table.php`, `create_role_user_table.php`, `create_permission_user_table.php`, `create_entity_permission_table.php`
+- **Optional - Groups** (`create_groups_table.php`, `create_group_user_table.php`): Only published if `features.groups.enabled` is `true`
+- **Optional - Abilities** (`create_abilities_table.php`, `create_entity_ability_table.php`): Only published if `features.abilities.enabled` is `true`
+- **Optional - Audit Logging** (`create_audit_logs_table.php`): Always published (table creation is handled by AuditService)
 
-All other migrations are **essential** for the package to function properly.
+> [!NOTE]
+> The `permission_user` table is essential and always created. It allows direct permission assignments to users, overriding role-based permissions.
 
 ### 5. Optional Configuration
 
@@ -205,6 +208,30 @@ $user->removeRole('admin');
 $user->syncRoles(['admin', 'editor']);
 ```
 
+### Direct Permissions
+
+You can assign or revoke permissions directly to users, overriding role-based permissions:
+
+```php
+// Give a permission directly to a user (even if their role doesn't have it)
+$user->givePermission('posts.create');
+
+// Revoke a permission directly from a user (even if their role has it)
+$user->revokePermission('posts.edit');
+
+// Remove a direct permission assignment (returns to role-based permissions)
+$user->removePermission('posts.delete');
+
+// Sync direct permissions (replaces all existing direct permissions)
+$user->syncPermissions(['posts.create', 'posts.view']);
+```
+
+**Priority Order:**
+1. Direct permissions (granted or revoked) have the highest priority
+2. If a permission is directly revoked, the user won't have it even if their role has it
+3. If a permission is directly granted, the user will have it even if their role doesn't have it
+4. If no direct assignment exists, role and group permissions apply
+
 ### Checking Permissions
 
 ```php
@@ -252,6 +279,12 @@ $user->forbidAbility('posts.edit', $post)
 
 // Remove ability from user
 $user->removeAbility('posts.edit', $post)
+
+// Direct permissions (override role permissions)
+$user->givePermission('posts.create')        // Grant permission directly
+$user->revokePermission('posts.edit')         // Revoke permission directly (even if role has it)
+$user->removePermission('posts.delete')       // Remove direct assignment (return to role-based)
+$user->syncPermissions(['perm1', 'perm2'])   // Sync direct permissions
 ```
 
 ## Roles & Permissions
@@ -445,6 +478,8 @@ The package dispatches events when permissions change, allowing you to hook into
 
 - `RoleAssigned`: Dispatched when a role is assigned to a user
 - `RoleRemoved`: Dispatched when a role is removed from a user
+- `PermissionGranted`: Dispatched when a permission is granted directly to a user
+- `PermissionRevoked`: Dispatched when a permission is revoked directly from a user
 - `AbilityGranted`: Dispatched when an ability is granted to a user
 - `AbilityRevoked`: Dispatched when an ability is revoked from a user
 
@@ -452,11 +487,15 @@ The package dispatches events when permissions change, allowing you to hook into
 
 ```php
 use Squareetlabs\LaravelSimplePermissions\Events\RoleAssigned;
+use Squareetlabs\LaravelSimplePermissions\Events\PermissionGranted;
 use Squareetlabs\LaravelSimplePermissions\Events\AbilityGranted;
 
 // In your EventServiceProvider
 protected $listen = [
     RoleAssigned::class => [
+        // Your listeners here
+    ],
+    PermissionGranted::class => [
         // Your listeners here
     ],
     AbilityGranted::class => [

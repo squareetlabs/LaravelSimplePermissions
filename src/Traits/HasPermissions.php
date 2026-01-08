@@ -13,6 +13,8 @@ use Squareetlabs\LaravelSimplePermissions\Events\RoleAssigned;
 use Squareetlabs\LaravelSimplePermissions\Events\RoleRemoved;
 use Squareetlabs\LaravelSimplePermissions\Events\AbilityGranted;
 use Squareetlabs\LaravelSimplePermissions\Events\AbilityRevoked;
+use Squareetlabs\LaravelSimplePermissions\Events\PermissionGranted;
+use Squareetlabs\LaravelSimplePermissions\Events\PermissionRevoked;
 use Illuminate\Support\Collection;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Support\Str;
@@ -43,6 +45,18 @@ trait HasPermissions
     public function roles(): BelongsToMany
     {
         return $this->belongsToMany(SimplePermissionsFacade::model('role'), 'role_user', 'user_id', 'role_id')
+            ->withTimestamps();
+    }
+
+    /**
+     * Retrieve direct permissions assigned to the user.
+     *
+     * @return BelongsToMany
+     */
+    public function permissions(): BelongsToMany
+    {
+        return $this->belongsToMany(SimplePermissionsFacade::model('permission'), 'permission_user', 'user_id', 'permission_id')
+            ->withPivot('forbidden')
             ->withTimestamps();
     }
 
@@ -171,10 +185,21 @@ trait HasPermissions
             // We need to check if user has '*' permission via roles or groups.
         }
 
-        // Gather all user permissions from Roles and Groups
+        // Gather all user permissions from Roles, Groups, and direct assignments
         $userPermissions = $this->allPermissions();
+        
+        // Get directly forbidden permissions (these override role permissions)
+        $forbiddenPermissions = $this->getForbiddenPermissions();
 
         foreach ($permissions as $permission) {
+            // First check if permission is explicitly forbidden
+            if ($this->isPermissionForbidden($forbiddenPermissions, $permission)) {
+                if ($require) {
+                    return false;
+                }
+                continue;
+            }
+
             $hasPermission = $this->checkPermissionWildcard($userPermissions, $permission);
 
             if ($hasPermission && !$require) {
@@ -190,14 +215,14 @@ trait HasPermissions
     }
 
     /**
-     * Get all permissions the user has via Roles and Groups.
+     * Get all permissions the user has via Roles, Groups, and direct assignments.
      *
      * @return array
      */
     public function allPermissions(): array
     {
         // Eager load relationships to avoid N+1 queries
-        $relationships = ['roles.permissions'];
+        $relationships = ['roles.permissions', 'permissions'];
         
         if ($this->isGroupsEnabled()) {
             $relationships[] = 'groups.permissions';
@@ -215,7 +240,53 @@ trait HasPermissions
             $permissions = array_merge($permissions, $this->groups->flatMap(fn($group) => $group->permissions->pluck('code'))->toArray());
         }
 
+        // From direct assignments (only non-forbidden permissions)
+        $directPermissions = $this->permissions()
+            ->wherePivot('forbidden', false)
+            ->get()
+            ->pluck('code')
+            ->toArray();
+        $permissions = array_merge($permissions, $directPermissions);
+
         return array_unique($permissions);
+    }
+
+    /**
+     * Get all directly forbidden permissions.
+     *
+     * @return array
+     */
+    protected function getForbiddenPermissions(): array
+    {
+        $this->loadMissing('permissions');
+        
+        return $this->permissions()
+            ->wherePivot('forbidden', true)
+            ->get()
+            ->pluck('code')
+            ->toArray();
+    }
+
+    /**
+     * Check if a permission is explicitly forbidden (considering wildcards).
+     *
+     * @param array $forbiddenPermissions
+     * @param string $permission
+     * @return bool
+     */
+    protected function isPermissionForbidden(array $forbiddenPermissions, string $permission): bool
+    {
+        if (empty($forbiddenPermissions)) {
+            return false;
+        }
+
+        // Check exact match
+        if (in_array($permission, $forbiddenPermissions)) {
+            return true;
+        }
+
+        // Check wildcard matches - if any forbidden permission matches the requested permission
+        return $this->checkPermissionWildcard($forbiddenPermissions, $permission);
     }
 
     /**
@@ -481,6 +552,122 @@ trait HasPermissions
         }
 
         return $this;
+    }
+
+    /**
+     * Give a permission directly to the user (overrides role permissions).
+     *
+     * @param string|int|\Squareetlabs\LaravelSimplePermissions\Models\Permission $permission
+     * @return $this
+     */
+    public function givePermission($permission)
+    {
+        $permission = $this->getStoredPermission($permission);
+        
+        // Check if permission was already granted
+        $wasGranted = $this->permissions()
+            ->where('permission_id', $permission->id)
+            ->wherePivot('forbidden', false)
+            ->exists();
+        
+        // Sync without detaching, but set forbidden to false
+        $this->permissions()->syncWithoutDetaching([
+            $permission->id => ['forbidden' => false]
+        ]);
+
+        $this->clearPermissionCache();
+
+        // Dispatch event if permission was newly granted
+        if (!$wasGranted) {
+            event(new PermissionGranted($this, $permission));
+        }
+
+        return $this;
+    }
+
+    /**
+     * Revoke a permission directly from the user (overrides role permissions).
+     *
+     * @param string|int|\Squareetlabs\LaravelSimplePermissions\Models\Permission $permission
+     * @return $this
+     */
+    public function revokePermission($permission)
+    {
+        $permission = $this->getStoredPermission($permission);
+        
+        // Check if permission was assigned before revoking
+        $wasAssigned = $this->permissions()->where('permission_id', $permission->id)->exists();
+        
+        // Set forbidden to true (or remove if you prefer)
+        // We'll set forbidden=true to explicitly deny, even if role has it
+        $this->permissions()->syncWithoutDetaching([
+            $permission->id => ['forbidden' => true]
+        ]);
+
+        $this->clearPermissionCache();
+
+        // Dispatch event if permission was actually revoked
+        if ($wasAssigned) {
+            event(new PermissionRevoked($this, $permission));
+        }
+
+        return $this;
+    }
+
+    /**
+     * Remove a direct permission assignment from the user (returns to role-based permissions).
+     *
+     * @param string|int|\Squareetlabs\LaravelSimplePermissions\Models\Permission $permission
+     * @return $this
+     */
+    public function removePermission($permission)
+    {
+        $permission = $this->getStoredPermission($permission);
+        
+        $this->permissions()->detach($permission);
+
+        $this->clearPermissionCache();
+
+        return $this;
+    }
+
+    /**
+     * Sync the user's direct permissions.
+     *
+     * @param array $permissions
+     * @return $this
+     */
+    public function syncPermissions(array $permissions)
+    {
+        $mappedPermissions = [];
+        foreach ($permissions as $permission) {
+            $permissionModel = $this->getStoredPermission($permission);
+            $mappedPermissions[$permissionModel->id] = ['forbidden' => false];
+        }
+        $this->permissions()->sync($mappedPermissions);
+
+        $this->clearPermissionCache();
+
+        return $this;
+    }
+
+    /**
+     * Get the permission model instance.
+     * 
+     * @param mixed $permission
+     * @return \Illuminate\Database\Eloquent\Model
+     */
+    protected function getStoredPermission($permission)
+    {
+        if (is_numeric($permission)) {
+            return SimplePermissionsFacade::model('permission')::findOrFail($permission);
+        }
+
+        if (is_string($permission)) {
+            return SimplePermissionsFacade::model('permission')::where('code', $permission)->firstOrFail();
+        }
+
+        return $permission;
     }
 
     /**

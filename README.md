@@ -26,7 +26,7 @@ A comprehensive and flexible Laravel package for advanced permission management.
 
 - ✅ **Roles & Permissions**: Flexible role system with granular permissions
 - ✅ **Groups** (Optional): Organize users into groups with shared permissions
-- ✅ **Abilities**: Entity-specific permissions for individual models
+- ✅ **Abilities**: (Optional) Entity-specific permissions for individual models
 - ✅ **Smart Caching**: Caching system to optimize permission checks
 - ✅ **Audit Logging**: Complete action logging (optional)
 - ✅ **Blade Directives**: Blade directives for permission checks in views

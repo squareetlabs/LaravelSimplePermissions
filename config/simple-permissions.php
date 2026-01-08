@@ -148,4 +148,20 @@ return [
         ],
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Optional Features Configuration
+    |--------------------------------------------------------------------------
+    | Enable or disable optional features. When disabled, related migrations
+    | won't be published and related functionality will be skipped.
+    */
+    'features' => [
+        'groups' => [
+            'enabled' => env('SIMPLE_PERMISSIONS_GROUPS_ENABLED', true),
+        ],
+        'abilities' => [
+            'enabled' => env('SIMPLE_PERMISSIONS_ABILITIES_ENABLED', true),
+        ],
+    ],
+
 ];

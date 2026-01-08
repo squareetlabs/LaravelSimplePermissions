@@ -3,7 +3,9 @@
 namespace Squareetlabs\LaravelSimplePermissions\Console;
 
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Config;
 use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Schema;
 use Squareetlabs\LaravelSimplePermissions\Support\Facades\SimplePermissions;
 use Exception;
 
@@ -62,7 +64,12 @@ class PermissionsImportCommand extends Command
 
         $permissionModel = SimplePermissions::model('permission');
         $roleModel = SimplePermissions::model('role');
-        $groupModel = SimplePermissions::model('group');
+        
+        $groupsEnabled = Config::get('simple-permissions.features.groups.enabled', true)
+            && Schema::hasTable('groups')
+            && Schema::hasTable('group_user');
+        
+        $groupModel = $groupsEnabled ? SimplePermissions::model('group') : null;
 
         // Import permissions
         if (isset($data['permissions']) && is_array($data['permissions'])) {
@@ -99,8 +106,8 @@ class PermissionsImportCommand extends Command
             }
         }
 
-        // Import groups
-        if (isset($data['groups']) && is_array($data['groups'])) {
+        // Import groups (only if enabled)
+        if ($groupsEnabled && isset($data['groups']) && is_array($data['groups'])) {
             foreach ($data['groups'] as $groupData) {
                 if (!isset($groupData['code'])) {
                     continue;
@@ -125,6 +132,8 @@ class PermissionsImportCommand extends Command
                     $this->warn("Failed to import group {$groupData['code']}: {$e->getMessage()}");
                 }
             }
+        } elseif (isset($data['groups']) && is_array($data['groups']) && !$groupsEnabled) {
+            $this->warn("Groups feature is disabled. Skipping groups import.");
         }
 
         $this->info("Import completed successfully!");

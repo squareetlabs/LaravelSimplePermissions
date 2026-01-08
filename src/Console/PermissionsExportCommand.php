@@ -3,6 +3,8 @@
 namespace Squareetlabs\LaravelSimplePermissions\Console;
 
 use Illuminate\Console\Command;
+use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\Schema;
 use Squareetlabs\LaravelSimplePermissions\Support\Facades\SimplePermissions;
 use Exception;
 
@@ -33,7 +35,10 @@ class PermissionsExportCommand extends Command
 
         $permissionModel = SimplePermissions::model('permission');
         $roleModel = SimplePermissions::model('role');
-        $groupModel = SimplePermissions::model('group');
+        
+        $groupsEnabled = Config::get('simple-permissions.features.groups.enabled', true)
+            && Schema::hasTable('groups')
+            && Schema::hasTable('group_user');
 
         $permissions = $permissionModel::all();
 
@@ -46,18 +51,22 @@ class PermissionsExportCommand extends Command
             ];
         });
 
-        $groups = $groupModel::with('permissions')->get()->map(function ($group) {
-            return [
-                'code' => $group->code,
-                'name' => $group->name,
-                'permissions' => $group->permissions->pluck('code')->toArray(),
-            ];
-        });
+        $groups = [];
+        if ($groupsEnabled) {
+            $groupModel = SimplePermissions::model('group');
+            $groups = $groupModel::with('permissions')->get()->map(function ($group) {
+                return [
+                    'code' => $group->code,
+                    'name' => $group->name,
+                    'permissions' => $group->permissions->pluck('code')->toArray(),
+                ];
+            })->toArray();
+        }
 
         $data = [
             'permissions' => $permissions->pluck('code')->toArray(),
             'roles' => $roles->toArray(),
-            'groups' => $groups->toArray(),
+            'groups' => $groups,
             'exported_at' => now()->toIso8601String(),
         ];
 
@@ -79,7 +88,8 @@ class PermissionsExportCommand extends Command
         file_put_contents($filename, $content);
 
         $this->info("Permissions exported to: {$filename}");
-        $this->line("Exported {$permissions->count()} permissions, {$roles->count()} roles, and {$groups->count()} groups.");
+        $groupsCount = $groupsEnabled ? count($groups) : 0;
+        $this->line("Exported {$permissions->count()} permissions, {$roles->count()} roles" . ($groupsEnabled ? ", and {$groupsCount} groups" : " (groups disabled)") . ".");
 
         return self::SUCCESS;
     }

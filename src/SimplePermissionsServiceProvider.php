@@ -54,14 +54,26 @@ class SimplePermissionsServiceProvider extends ServiceProvider
         $migrations = [
             __DIR__ . '/../database/migrations/create_permissions_table.php' => database_path('migrations/2019_12_14_000002_create_permissions_table.php'),
             __DIR__ . '/../database/migrations/create_roles_table.php' => database_path('migrations/2019_12_14_000003_create_roles_table.php'),
-            __DIR__ . '/../database/migrations/create_abilities_table.php' => database_path('migrations/2019_12_14_000006_create_abilities_table.php'),
-            __DIR__ . '/../database/migrations/create_entity_ability_table.php' => database_path('migrations/2019_12_14_000006_create_entity_ability_table.php'),
-            __DIR__ . '/../database/migrations/create_groups_table.php' => database_path('migrations/2019_12_14_000008_create_groups_table.php'),
-            __DIR__ . '/../database/migrations/create_group_user_table.php' => database_path('migrations/2019_12_14_000009_create_group_user_table.php'),
-            __DIR__ . '/../database/migrations/create_entity_permission_table.php' => database_path('migrations/2019_12_14_000010_create_entity_permission_table.php'),
-            __DIR__ . '/../database/migrations/create_audit_logs_table.php' => database_path('migrations/2019_12_14_000011_create_audit_logs_table.php'),
+            __DIR__ . '/../database/migrations/create_role_user_table.php' => database_path('migrations/2019_12_14_000004_create_role_user_table.php'),
+            __DIR__ . '/../database/migrations/create_entity_permission_table.php' => database_path('migrations/2019_12_14_000005_create_entity_permission_table.php'),
         ];
 
+        // Add abilities migrations if enabled
+        if (Config::get('simple-permissions.features.abilities.enabled', true)) {
+            $migrations[__DIR__ . '/../database/migrations/create_abilities_table.php'] = database_path('migrations/2019_12_14_000006_create_abilities_table.php');
+            $migrations[__DIR__ . '/../database/migrations/create_entity_ability_table.php'] = database_path('migrations/2019_12_14_000007_create_entity_ability_table.php');
+        }
+
+        // Add groups migrations if enabled
+        if (Config::get('simple-permissions.features.groups.enabled', true)) {
+            $migrations[__DIR__ . '/../database/migrations/create_groups_table.php'] = database_path('migrations/2019_12_14_000008_create_groups_table.php');
+            $migrations[__DIR__ . '/../database/migrations/create_group_user_table.php'] = database_path('migrations/2019_12_14_000009_create_group_user_table.php');
+        }
+
+        // Add audit logs migration (optional, but always published - table creation is handled by AuditService)
+        $migrations[__DIR__ . '/../database/migrations/create_audit_logs_table.php'] = database_path('migrations/2019_12_14_000011_create_audit_logs_table.php');
+
+        // Add performance indexes migration
         $migrations[__DIR__ . '/../database/migrations/add_performance_indexes.php'] = database_path('migrations/2019_12_14_000014_add_performance_indexes.php');
 
         $this->publishes([

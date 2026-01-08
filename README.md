@@ -12,7 +12,7 @@ A comprehensive and flexible Laravel package for advanced permission management.
 
 - **Permission System**: Implement fine-grained permissions using a code-based system (e.g., `posts.create`, `users.edit`). Permissions are global entities that can be assigned to roles and groups. Supports wildcard permissions for flexible access patterns.
 
-- **Group Management**: Organize users into groups. Groups can have their own permission sets, allowing for efficient permission management when multiple users need the same access level.
+- **Group Management** (Optional): Organize users into groups. Groups can have their own permission sets, allowing for efficient permission management when multiple users need the same access level. This feature is optional and can be skipped if not needed.
 
 - **Entity-Specific Abilities**: Grant or deny permissions for specific model instances (e.g., allowing a user to edit a particular post but not others). This provides the most granular level of access control.
 
@@ -25,7 +25,7 @@ A comprehensive and flexible Laravel package for advanced permission management.
 ## Key Features
 
 - ✅ **Roles & Permissions**: Flexible role system with granular permissions
-- ✅ **Groups**: Organize users into groups with shared permissions
+- ✅ **Groups** (Optional): Organize users into groups with shared permissions
 - ✅ **Abilities**: Entity-specific permissions for individual models
 - ✅ **Smart Caching**: Caching system to optimize permission checks
 - ✅ **Audit Logging**: Complete action logging (optional)
@@ -90,6 +90,43 @@ php artisan migrate
 
 > [!NOTE]
 > If you wish to use custom foreign keys and table names, modify `config/simple-permissions.php` before running migrations.
+
+#### Optional Features Configuration
+
+You can enable or disable optional features (Groups and Abilities) via configuration. When disabled, related migrations won't be published and related functionality will be skipped.
+
+Configure in `config/simple-permissions.php` or via environment variables:
+
+```env
+# Disable groups feature
+SIMPLE_PERMISSIONS_GROUPS_ENABLED=false
+
+# Disable abilities feature
+SIMPLE_PERMISSIONS_ABILITIES_ENABLED=false
+```
+
+Or in `config/simple-permissions.php`:
+
+```php
+'features' => [
+    'groups' => [
+        'enabled' => env('SIMPLE_PERMISSIONS_GROUPS_ENABLED', true),
+    ],
+    'abilities' => [
+        'enabled' => env('SIMPLE_PERMISSIONS_ABILITIES_ENABLED', true),
+    ],
+],
+```
+
+> [!NOTE]
+> **Important**: Configure these settings **before** publishing migrations. If you disable a feature after migrations have been published, you'll need to manually remove the related migration files or tables.
+
+**Optional Migrations:**
+- **Groups** (`create_groups_table.php`, `create_group_user_table.php`): Only published if `features.groups.enabled` is `true`
+- **Abilities** (`create_abilities_table.php`, `create_entity_ability_table.php`): Only published if `features.abilities.enabled` is `true`
+- **Audit Logging** (`create_audit_logs_table.php`): Always published (table creation is handled by AuditService)
+
+All other migrations are **essential** for the package to function properly.
 
 ### 5. Optional Configuration
 
@@ -242,6 +279,9 @@ if ($user->hasPermission(['posts.create', 'posts.edit'], true)) {
 
 ## Abilities
 
+> [!NOTE]
+> **Abilities are optional**. Enable/disable via `SIMPLE_PERMISSIONS_ABILITIES_ENABLED` in your `.env` file or `config/simple-permissions.php`. When disabled, ability-related migrations won't be published. The `hasAbility()` method will fall back to checking global permissions, and methods like `allowAbility()`, `forbidAbility()`, and `removeAbility()` will throw an exception.
+
 Abilities allow specific permissions for individual entities.
 
 ### Creating and Assigning Abilities
@@ -295,7 +335,10 @@ if ($user->hasAbility('posts.edit', $post)) {
 
 ## Groups
 
-Groups allow organizing users with shared permissions.
+> [!NOTE]
+> **Groups are optional**. Enable/disable via `SIMPLE_PERMISSIONS_GROUPS_ENABLED` in your `.env` file or `config/simple-permissions.php`. When disabled, group-related migrations won't be published and group functionality will be skipped automatically.
+
+Groups allow organizing users with shared permissions. This is useful when multiple users need the same set of permissions and you want to manage them collectively.
 
 ### Creating and Managing Groups
 

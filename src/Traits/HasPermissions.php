@@ -5,6 +5,7 @@ namespace Squareetlabs\LaravelSimplePermissions\Traits;
 use Illuminate\Database\Eloquent\Relations\BelongsToMany;
 use Illuminate\Database\Eloquent\Relations\MorphToMany;
 use Illuminate\Support\Facades\Config;
+use Illuminate\Support\Facades\Schema;
 use Squareetlabs\LaravelSimplePermissions\Support\Facades\SimplePermissions as SimplePermissionsFacade;
 use Squareetlabs\LaravelSimplePermissions\Support\Services\PermissionCache;
 use Squareetlabs\LaravelSimplePermissions\Events\RoleAssigned;
@@ -45,12 +46,43 @@ trait HasPermissions
     }
 
     /**
+     * Check if groups feature is enabled and table exists.
+     *
+     * @return bool
+     */
+    protected function isGroupsEnabled(): bool
+    {
+        return Config::get('simple-permissions.features.groups.enabled', true)
+            && Schema::hasTable('groups')
+            && Schema::hasTable('group_user');
+    }
+
+    /**
+     * Check if abilities feature is enabled and table exists.
+     *
+     * @return bool
+     */
+    protected function isAbilitiesEnabled(): bool
+    {
+        return Config::get('simple-permissions.features.abilities.enabled', true)
+            && Schema::hasTable('abilities')
+            && Schema::hasTable('entity_ability');
+    }
+
+    /**
      * Retrieve all groups the user belongs to.
      *
      * @return BelongsToMany
      */
     public function groups(): BelongsToMany
     {
+        if (!$this->isGroupsEnabled()) {
+            // Return an empty relationship if groups are disabled
+            // The whereRaw('1 = 0') ensures no results are returned
+            return $this->belongsToMany(SimplePermissionsFacade::model('group'), 'group_user', 'user_id', 'group_id')
+                ->whereRaw('1 = 0'); // Force empty result
+        }
+
         return $this->belongsToMany(SimplePermissionsFacade::model('group'), 'group_user', 'user_id', 'group_id');
     }
 
@@ -61,6 +93,15 @@ trait HasPermissions
      */
     public function abilities(): MorphToMany
     {
+        if (!$this->isAbilitiesEnabled()) {
+            // Return an empty relationship if abilities are disabled
+            // The whereRaw('1 = 0') ensures no results are returned
+            return $this->morphToMany(SimplePermissionsFacade::model('ability'), 'entity', 'entity_ability')
+                ->whereRaw('1 = 0') // Force empty result
+                ->withPivot('forbidden')
+                ->withTimestamps();
+        }
+
         return $this->morphToMany(SimplePermissionsFacade::model('ability'), 'entity', 'entity_ability')
             ->withPivot('forbidden')
             ->withTimestamps();
@@ -159,15 +200,23 @@ trait HasPermissions
     public function allPermissions(): array
     {
         // Eager load relationships to avoid N+1 queries
-        $this->loadMissing(['roles.permissions', 'groups.permissions']);
+        $relationships = ['roles.permissions'];
+        
+        if ($this->isGroupsEnabled()) {
+            $relationships[] = 'groups.permissions';
+        }
+        
+        $this->loadMissing($relationships);
 
         $permissions = [];
 
         // From Roles
         $permissions = array_merge($permissions, $this->roles->flatMap(fn($role) => $role->permissions->pluck('code'))->toArray());
 
-        // From Groups
-        $permissions = array_merge($permissions, $this->groups->flatMap(fn($group) => $group->permissions->pluck('code'))->toArray());
+        // From Groups (only if enabled)
+        if ($this->isGroupsEnabled()) {
+            $permissions = array_merge($permissions, $this->groups->flatMap(fn($group) => $group->permissions->pluck('code'))->toArray());
+        }
 
         return array_unique($permissions);
     }
@@ -198,6 +247,11 @@ trait HasPermissions
      */
     public function hasAbility(string $permission, object $entity): bool
     {
+        // If abilities are disabled, fall back to global permission check
+        if (!$this->isAbilitiesEnabled()) {
+            return $this->hasPermission($permission);
+        }
+
         $permissionId = SimplePermissionsFacade::model('permission')::where('code', $permission)->value('id');
         if (!$permissionId) {
             return false;
@@ -219,7 +273,11 @@ trait HasPermissions
         }
 
         // Eager load roles and groups with their abilities to avoid N+1 queries
-        $this->loadMissing(['roles.abilities', 'groups.abilities']);
+        $relationships = ['roles.abilities'];
+        if ($this->isGroupsEnabled()) {
+            $relationships[] = 'groups.abilities';
+        }
+        $this->loadMissing($relationships);
 
         // Check Roles
         foreach ($this->roles as $role) {
@@ -239,21 +297,23 @@ trait HasPermissions
             }
         }
 
-        // Check Groups
-        foreach ($this->groups as $group) {
-            $groupAbility = $group->abilities
-                ->where('entity_id', $entity->getKey())
-                ->where('entity_type', $entity::class)
-                ->where('permission_id', $permissionId)
-                ->first();
+        // Check Groups (only if enabled)
+        if ($this->isGroupsEnabled()) {
+            foreach ($this->groups as $group) {
+                $groupAbility = $group->abilities
+                    ->where('entity_id', $entity->getKey())
+                    ->where('entity_type', $entity::class)
+                    ->where('permission_id', $permissionId)
+                    ->first();
 
-            if ($groupAbility) {
-                // If explicitly forbidden, deny access
-                if ($groupAbility->pivot->forbidden) {
-                    return false;
+                if ($groupAbility) {
+                    // If explicitly forbidden, deny access
+                    if ($groupAbility->pivot->forbidden) {
+                        return false;
+                    }
+                    // If allowed via group ability, grant access
+                    return true;
                 }
-                // If allowed via group ability, grant access
-                return true;
             }
         }
 
@@ -267,9 +327,14 @@ trait HasPermissions
      * @param string $permission Permission code
      * @param object $entity Entity instance
      * @return $this
+     * @throws Exception
      */
     public function allowAbility(string $permission, object $entity)
     {
+        if (!$this->isAbilitiesEnabled()) {
+            throw new Exception('Abilities feature is disabled. Enable it in config/simple-permissions.php');
+        }
+
         $permissionModel = SimplePermissionsFacade::model('permission')::where('code', $permission)->firstOrFail();
         
         $ability = SimplePermissionsFacade::model('ability')::firstOrCreate([
@@ -306,9 +371,14 @@ trait HasPermissions
      * @param string $permission Permission code
      * @param object $entity Entity instance
      * @return $this
+     * @throws Exception
      */
     public function forbidAbility(string $permission, object $entity)
     {
+        if (!$this->isAbilitiesEnabled()) {
+            throw new Exception('Abilities feature is disabled. Enable it in config/simple-permissions.php');
+        }
+
         $permissionModel = SimplePermissionsFacade::model('permission')::where('code', $permission)->firstOrFail();
         
         $ability = SimplePermissionsFacade::model('ability')::firstOrCreate([
@@ -334,9 +404,14 @@ trait HasPermissions
      * @param string $permission Permission code
      * @param object $entity Entity instance
      * @return $this
+     * @throws Exception
      */
     public function removeAbility(string $permission, object $entity)
     {
+        if (!$this->isAbilitiesEnabled()) {
+            throw new Exception('Abilities feature is disabled. Enable it in config/simple-permissions.php');
+        }
+
         $permissionModel = SimplePermissionsFacade::model('permission')::where('code', $permission)->firstOrFail();
         
         $ability = SimplePermissionsFacade::model('ability')::where([

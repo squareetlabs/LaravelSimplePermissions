@@ -216,6 +216,7 @@ trait HasPermissions
 
     /**
      * Get all permissions the user has via Roles, Groups, and direct assignments.
+     * Excludes permissions that have been explicitly forbidden.
      *
      * @return array
      */
@@ -248,7 +249,19 @@ trait HasPermissions
             ->toArray();
         $permissions = array_merge($permissions, $directPermissions);
 
-        return array_unique($permissions);
+        // Get forbidden permissions (these override role/group permissions)
+        $forbiddenPermissions = $this->permissions()
+            ->wherePivot('forbidden', true)
+            ->get()
+            ->pluck('code')
+            ->toArray();
+
+        // Remove forbidden permissions from the final list
+        if (!empty($forbiddenPermissions)) {
+            $permissions = array_diff($permissions, $forbiddenPermissions);
+        }
+
+        return array_values(array_unique($permissions));
     }
 
     /**

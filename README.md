@@ -227,10 +227,43 @@ $user->syncPermissions(['posts.create', 'posts.view']);
 ```
 
 **Priority Order:**
-1. Direct permissions (granted or revoked) have the highest priority
-2. If a permission is directly revoked, the user won't have it even if their role has it
+1. **Forbidden permissions** (revoked via `revokePermission()`) have the **highest priority**
+2. If a permission is explicitly forbidden, the user won't have it even if their role has it
 3. If a permission is directly granted, the user will have it even if their role doesn't have it
 4. If no direct assignment exists, role and group permissions apply
+
+#### Understanding Forbidden Permissions
+
+When you use `revokePermission()`, the permission is marked as **forbidden** in the database (`permission_user.forbidden = true`). This is different from simply removing a permission:
+
+```php
+$user->assignRole('admin'); // Admin role has 10 permissions
+
+// Option 1: Revoke (forbid) a permission - RECOMMENDED when user has roles
+$user->revokePermission('posts.delete');
+// Result: User has 9 permissions (posts.delete is forbidden)
+// In DB: permission_user entry with forbidden=true
+
+// Option 2: Remove permission assignment
+$user->removePermission('posts.delete');
+// Result: User still has 10 permissions (from admin role)
+// In DB: No entry in permission_user for this permission
+
+// Option 3: Give permission (override role)
+$user->givePermission('posts.publish');
+// Result: User has admin permissions + posts.publish
+// In DB: permission_user entry with forbidden=false
+```
+
+**When to use each method:**
+
+| Method | Use Case | Effect on Roles |
+|--------|----------|-----------------|
+| `givePermission()` | Add a permission not in user's roles | ➕ Adds to role permissions |
+| `revokePermission()` | Remove a permission from user's roles | 🚫 Overrides and blocks role permission |
+| `removePermission()` | Remove a direct assignment | 🔄 Returns to role-based permissions |
+
+**Important:** The `allPermissions()` method automatically filters out forbidden permissions, ensuring consistency between permission checks and permission lists.
 
 ### Checking Permissions
 

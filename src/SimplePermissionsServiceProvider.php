@@ -32,8 +32,6 @@ class SimplePermissionsServiceProvider extends ServiceProvider
      */
     public function boot(): void
     {
-        $this->loadViewsFrom(__DIR__ . '/../resources/views', 'simple-permissions');
-
         $this->configureCommands();
         $this->configurePublishing();
         $this->registerFacades();
